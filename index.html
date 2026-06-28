@@ -11,13 +11,79 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800;900&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=2">
+  <link rel="stylesheet" href="css/styles.css?v=3">
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icons/icon-180.png">
 </head>
 <body>
 
-<!-- ── REST TIMER OVERLAY (global, outside screens) ─────────────────────── -->
+<!-- ── CHAT OVERLAY ───────────────────────────────────────────────────────── -->
+<div id="chat-overlay" class="hidden">
+  <div class="chat-topbar">
+    <div>
+      <div class="chat-topbar-title">Coach</div>
+      <div class="chat-topbar-sub">Tiene memoria de todas tus sesiones</div>
+    </div>
+    <button class="chat-close-btn" onclick="closeChat()">✕</button>
+  </div>
+  <div id="chat-messages"></div>
+  <div class="chat-input-bar">
+    <input id="chat-input" type="text" placeholder="Pregunta algo..." onkeydown="handleChatKey(event)" autocomplete="off">
+    <button id="chat-send-btn" onclick="submitChat()">↑</button>
+  </div>
+</div>
+
+<!-- ── SETTINGS OVERLAY ───────────────────────────────────────────────────── -->
+<div id="settings-overlay" class="hidden">
+  <div class="settings-topbar">
+    <div class="settings-topbar-title">Ajustes</div>
+    <button class="settings-close-btn" onclick="closeSettings()">✕</button>
+  </div>
+  <div class="settings-body">
+
+    <!-- Anthropic API Key -->
+    <div class="settings-section">
+      <div class="settings-section-label">Anthropic API Key</div>
+      <div class="settings-desc">
+        Necesaria para el chat con el coach.<br>
+        Consíguela gratis en <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a> → API Keys.
+      </div>
+      <div class="settings-input-row">
+        <input id="settings-key" class="settings-input" type="password" placeholder="sk-ant-...">
+        <button class="settings-toggle-btn" id="toggle-key-btn" onclick="toggleKeyVisibility()">Mostrar</button>
+      </div>
+    </div>
+
+    <!-- Google Sheets -->
+    <div class="settings-section">
+      <div class="settings-section-label">Google Sheets — Export automático</div>
+      <div class="settings-desc">Cada sesión se añade automáticamente a tu Google Sheet. Configúralo una sola vez.</div>
+
+      <div class="settings-step">
+        <div class="settings-step-num">1</div>
+        <div class="settings-step-text">Abre <a href="https://script.google.com" target="_blank">script.google.com</a> → Nuevo proyecto</div>
+      </div>
+      <div class="settings-step">
+        <div class="settings-step-num">2</div>
+        <div class="settings-step-text">Borra el código que hay y pega este:</div>
+      </div>
+      <div class="settings-code" id="apps-script-code">cargando...</div>
+      <div class="settings-step" style="margin-top:10px">
+        <div class="settings-step-num">3</div>
+        <div class="settings-step-text">Implementar → Nueva implementación → Aplicación web → Ejecutar como: Yo → Quién tiene acceso: Cualquiera → Implementar</div>
+      </div>
+      <div class="settings-step">
+        <div class="settings-step-num">4</div>
+        <div class="settings-step-text">Copia la URL de implementación y pégala aquí:</div>
+      </div>
+      <input id="settings-sheets" class="settings-input" type="url" placeholder="https://script.google.com/macros/s/...">
+    </div>
+
+    <button class="settings-save-btn" onclick="saveSettings()">Guardar ajustes</button>
+  </div>
+</div>
+
+<!-- ── REST TIMER OVERLAY ─────────────────────────────────────────────────── -->
 <div id="rest-overlay" class="hidden">
   <div class="rest-ring-wrap" id="rest-ring-wrap">
     <div class="rest-ring-inner" id="rest-countdown">0:00</div>
@@ -38,7 +104,7 @@
 <!-- ── A: CHECK-IN ──────────────────────────────────────────────────────── -->
 <div id="screen-checkin" class="screen">
   <div class="ci-header">
-    <div class="ci-greeting" id="ci-day-label">Cargando...</div>
+    <div class="ci-greeting" id="ci-day-label">—</div>
     <div class="ci-title">Cómo llegas hoy</div>
   </div>
 
@@ -117,19 +183,17 @@
       <div class="ss-greeting-sub" id="ss-day-label">—</div>
       <div class="ss-greeting-main">Buenas, Teo</div>
     </div>
-    <div class="ss-avatar">T</div>
+    <div class="header-actions">
+      <button class="btn-chat" onclick="openChat()"><div class="btn-chat-dot"></div>Coach</button>
+      <button class="btn-gear" onclick="showSettings()">⚙</button>
+    </div>
   </div>
 
   <div class="ss-body">
-    <!-- check-in summary — rendered by JS -->
     <div id="ss-checkin-summary"></div>
-
     <div class="ss-section-title">Tu sesión de hoy</div>
     <div class="ss-section-sub" id="ss-subtitle">Elige lo que toca.</div>
-
-    <div class="session-list" id="session-list">
-      <!-- rendered by JS -->
-    </div>
+    <div class="session-list" id="session-list"></div>
   </div>
 </div>
 
@@ -141,16 +205,13 @@
       <div class="as-sess-name" id="as-sess-name">—</div>
       <div class="as-ex-count" id="as-ex-count">EJERCICIO 1 DE 4</div>
     </div>
-    <div class="as-more">⋯</div>
+    <button class="btn-chat" onclick="openChatInSession()" style="font-size:11px;padding:6px 11px">
+      <div class="btn-chat-dot"></div>Coach
+    </button>
   </div>
 
-  <div class="as-progress" id="as-progress">
-    <!-- segments rendered by JS -->
-  </div>
-
-  <div class="as-body" id="as-body">
-    <!-- exercise content rendered by JS -->
-  </div>
+  <div class="as-progress" id="as-progress"></div>
+  <div class="as-body" id="as-body"></div>
 
   <div style="padding: 0 20px;" id="as-footer-wrap">
     <div class="as-footer">
@@ -165,16 +226,51 @@
 <div id="screen-history" class="screen hidden">
   <div class="hist-header">
     <div class="hist-title">Historial</div>
-    <button class="hist-back" onclick="initCheckin()">← Volver</button>
+    <div class="header-actions">
+      <button class="btn-chat" onclick="openChat()"><div class="btn-chat-dot"></div>Coach</button>
+      <button class="hist-back" onclick="initCheckin()">← Inicio</button>
+    </div>
   </div>
   <div class="hist-body" id="history-content"></div>
 </div>
 
-<script src="js/data.js?v=2"></script>
-<script src="js/db.js?v=2"></script>
-<script src="js/rules.js?v=2"></script>
-<script src="js/app.js?v=2"></script>
+<script src="js/data.js?v=3"></script>
+<script src="js/db.js?v=3"></script>
+<script src="js/rules.js?v=3"></script>
+<script src="js/ai.js?v=3"></script>
+<script src="js/app.js?v=3"></script>
 <script>
+  // Apps Script code for settings screen
+  document.getElementById('apps-script-code').textContent =
+`function doPost(e) {
+  try {
+    const d = JSON.parse(e.postData.contents);
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    let sh = ss.getSheetByName('Entrenos');
+    if (!sh) {
+      sh = ss.insertSheet('Entrenos');
+      sh.appendRow(['Fecha','Hora','Sesión','Min','Rodilla',
+        'Energía','Comida','Ejercicio','Serie','Kg','Reps']);
+      sh.setFrozenRows(1);
+      sh.getRange(1,1,1,11)
+        .setBackground('#0b0b0d').setFontColor('#e9b949').setFontWeight('bold');
+    }
+    (d.ejercicios||[]).forEach(ex => {
+      (ex.series||[]).forEach((s,i) => {
+        sh.appendRow([d.fecha,d.hora,d.sesion,d.duracion,
+          d.rodilla,d.energia,d.comida,ex.nombre,i+1,s.kg,s.reps]);
+      });
+    });
+    return ContentService
+      .createTextOutput(JSON.stringify({ok:true}))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch(err) {
+    return ContentService
+      .createTextOutput(JSON.stringify({ok:false,error:err.toString()}))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}`;
+
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('service-worker.js')

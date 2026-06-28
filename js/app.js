@@ -625,6 +625,13 @@ async function finishSession() {
     console.error(e);
   }
 
+  // Export to Google Sheets if configured
+  if (getSheetsUrl()) {
+    exportSessionToSheets(session)
+      .then(ok => { if (ok) showToast('Exportado a Google Sheets ✓', 'success'); })
+      .catch(() => {});
+  }
+
   await buildHistoryScreen();
   showScreen('screen-history');
 }
@@ -713,6 +720,22 @@ async function buildProgressionAlerts() {
     }
   }
   return alerts;
+}
+
+// ── Chat helpers ──────────────────────────────────────────────────────────────
+function openChatInSession() {
+  const ex = state.activeExercises[state.currentExIdx];
+  const sets = state.sessionSets[ex?.id] || [];
+  let prefill = '';
+  if (ex) {
+    if (sets.length === 0) {
+      prefill = `Voy a hacer ${ex.name}. ¿Algún consejo antes de empezar?`;
+    } else {
+      const last = sets[sets.length - 1];
+      prefill = `Acabo de hacer ${ex.name} — ${last.kg}kg×${last.reps} reps. ¿Mantengo o ajusto algo?`;
+    }
+  }
+  openChat(prefill);
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
