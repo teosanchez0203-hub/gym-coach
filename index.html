@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#08080a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Gym Coach">
+  <title>Coach de Gym</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800;900&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css?v=2">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+</head>
+<body>
+
+<!-- ── REST TIMER OVERLAY (global, outside screens) ─────────────────────── -->
+<div id="rest-overlay" class="hidden">
+  <div class="rest-ring-wrap" id="rest-ring-wrap">
+    <div class="rest-ring-inner" id="rest-countdown">0:00</div>
+  </div>
+  <div class="rest-info">
+    <div class="rest-label-top">DESCANSO</div>
+    <div class="rest-label-sub" id="rest-sublabel">Respira. Prepara la próxima serie.</div>
+  </div>
+  <div class="rest-actions">
+    <button class="rest-add-btn" onclick="addRestTime(30)">+30s</button>
+    <button class="rest-skip-btn" onclick="skipTimer()">Saltar</button>
+  </div>
+</div>
+
+<!-- ── TOAST ─────────────────────────────────────────────────────────────── -->
+<div id="toast"></div>
+
+<!-- ── A: CHECK-IN ──────────────────────────────────────────────────────── -->
+<div id="screen-checkin" class="screen">
+  <div class="ci-header">
+    <div class="ci-greeting" id="ci-day-label">Cargando...</div>
+    <div class="ci-title">Cómo llegas hoy</div>
+  </div>
+
+  <div class="ci-body">
+    <div class="ci-section">
+      <div class="ci-section-label">Rodilla</div>
+      <div class="ci-grid-3">
+        <button class="ci-btn" data-group="rodilla" data-value="bien"
+          onclick="selectCheckinOption('rodilla','bien',this)">0–3/10</button>
+        <button class="ci-btn" data-group="rodilla" data-value="moderado"
+          onclick="selectCheckinOption('rodilla','moderado',this)">4–6/10</button>
+        <button class="ci-btn danger-select" data-group="rodilla" data-value="grave"
+          onclick="selectCheckinOption('rodilla','grave',this)">+6 / reposo</button>
+      </div>
+    </div>
+
+    <div class="ci-section">
+      <div class="ci-section-label">Energía</div>
+      <div class="ci-grid-3">
+        <button class="ci-btn" data-group="energia" data-value="bien"
+          onclick="selectCheckinOption('energia','bien',this)">Bien</button>
+        <button class="ci-btn" data-group="energia" data-value="cansado"
+          onclick="selectCheckinOption('energia','cansado',this)">Cansado</button>
+        <button class="ci-btn danger-select" data-group="energia" data-value="mareo"
+          onclick="selectCheckinOption('energia','mareo',this)">Mareo</button>
+      </div>
+    </div>
+
+    <div class="ci-section">
+      <div class="ci-section-label">Comida</div>
+      <div class="ci-grid-3">
+        <button class="ci-btn" data-group="comida" data-value="comido"
+          onclick="selectCheckinOption('comida','comido',this)">He comido</button>
+        <button class="ci-btn" data-group="comida" data-value="ligero"
+          onclick="selectCheckinOption('comida','ligero',this)">Algo ligero</button>
+        <button class="ci-btn danger-select" data-group="comida" data-value="ayunas"
+          onclick="selectCheckinOption('comida','ayunas',this)">En ayunas</button>
+      </div>
+    </div>
+
+    <div class="ci-section">
+      <div class="ci-section-label">Tiempo hoy</div>
+      <div class="ci-grid-4">
+        <button class="ci-btn" data-group="tiempo" data-value="30"
+          onclick="selectCheckinOption('tiempo','30',this)">30 min</button>
+        <button class="ci-btn" data-group="tiempo" data-value="45"
+          onclick="selectCheckinOption('tiempo','45',this)">45 min</button>
+        <button class="ci-btn" data-group="tiempo" data-value="60"
+          onclick="selectCheckinOption('tiempo','60',this)">60 min</button>
+        <button class="ci-btn" data-group="tiempo" data-value="75"
+          onclick="selectCheckinOption('tiempo','75',this)">+60 min</button>
+      </div>
+    </div>
+
+    <button class="ci-cta" id="btn-next-checkin" disabled onclick="submitCheckin()">
+      Continuar →
+    </button>
+  </div>
+</div>
+
+<!-- ── B: AVISOS ─────────────────────────────────────────────────────────── -->
+<div id="screen-warnings" class="screen hidden">
+  <div class="warn-header">
+    <div class="warn-title">Avisos de hoy</div>
+  </div>
+  <div class="warn-body">
+    <div id="warnings-list"></div>
+    <button id="btn-proceed-anyway" class="warn-proceed">Entendido, seguir →</button>
+  </div>
+</div>
+
+<!-- ── C: SESIÓN ─────────────────────────────────────────────────────────── -->
+<div id="screen-session-select" class="screen hidden">
+  <div class="ss-header">
+    <div>
+      <div class="ss-greeting-sub" id="ss-day-label">—</div>
+      <div class="ss-greeting-main">Buenas, Teo</div>
+    </div>
+    <div class="ss-avatar">T</div>
+  </div>
+
+  <div class="ss-body">
+    <!-- check-in summary — rendered by JS -->
+    <div id="ss-checkin-summary"></div>
+
+    <div class="ss-section-title">Tu sesión de hoy</div>
+    <div class="ss-section-sub" id="ss-subtitle">Elige lo que toca.</div>
+
+    <div class="session-list" id="session-list">
+      <!-- rendered by JS -->
+    </div>
+  </div>
+</div>
+
+<!-- ── D: SESIÓN ACTIVA ──────────────────────────────────────────────────── -->
+<div id="screen-active" class="screen hidden">
+  <div class="as-topbar">
+    <button class="as-back" onclick="confirmBack()">‹</button>
+    <div class="as-topbar-center">
+      <div class="as-sess-name" id="as-sess-name">—</div>
+      <div class="as-ex-count" id="as-ex-count">EJERCICIO 1 DE 4</div>
+    </div>
+    <div class="as-more">⋯</div>
+  </div>
+
+  <div class="as-progress" id="as-progress">
+    <!-- segments rendered by JS -->
+  </div>
+
+  <div class="as-body" id="as-body">
+    <!-- exercise content rendered by JS -->
+  </div>
+
+  <div style="padding: 0 20px;" id="as-footer-wrap">
+    <div class="as-footer">
+      <button class="as-prev-btn" id="btn-prev-ex" onclick="prevExercise()" disabled>‹</button>
+      <button class="as-next-btn" id="btn-next-ex" onclick="nextExercise()">Siguiente ejercicio ›</button>
+    </div>
+    <div class="as-finish-link" onclick="finishSession()">TERMINAR Y GUARDAR</div>
+  </div>
+</div>
+
+<!-- ── E: HISTORIAL ──────────────────────────────────────────────────────── -->
+<div id="screen-history" class="screen hidden">
+  <div class="hist-header">
+    <div class="hist-title">Historial</div>
+    <button class="hist-back" onclick="initCheckin()">← Volver</button>
+  </div>
+  <div class="hist-body" id="history-content"></div>
+</div>
+
+<script src="js/data.js?v=2"></script>
+<script src="js/db.js?v=2"></script>
+<script src="js/rules.js?v=2"></script>
+<script src="js/app.js?v=2"></script>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('service-worker.js')
+        .catch(e => console.warn('SW:', e));
+    });
+  }
+</script>
+</body>
+</html>
