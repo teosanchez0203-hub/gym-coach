@@ -1,7 +1,7 @@
 // ── Settings ──────────────────────────────────────────────────────────────────
 function getSetting(k)        { return localStorage.getItem('gc_' + k) || ''; }
 function setSetting(k, v)     { localStorage.setItem('gc_' + k, v); }
-function getApiKey()          { return getSetting('anthropic_key'); }
+function getApiKey()          { return getSetting('groq_key'); }
 function getSheetsUrl()       { return getSetting('sheets_url'); }
 
 // ── System prompt ─────────────────────────────────────────────────────────────
@@ -73,7 +73,7 @@ async function sendChatMessage(userMessage) {
   const apiKey = getApiKey();
   if (!apiKey) {
     showSettings();
-    showToast('Añade tu API key de Anthropic en Ajustes', 'warn');
+    showToast('Añade tu API key de Groq en Ajustes (es gratis)', 'warn');
     return null;
   }
 
@@ -81,20 +81,21 @@ async function sendChatMessage(userMessage) {
 
   const systemPrompt = await buildSystemPrompt();
 
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
+  // Groq API — formato OpenAI compatible, 100% gratis
+  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
     headers: {
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-      'content-type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
+      model: 'llama-3.3-70b-versatile',
       max_tokens: 600,
       stream: true,
-      system: systemPrompt,
-      messages: chatHistory
+      messages: [
+        { role: 'system', content: systemPrompt },
+        ...chatHistory
+      ]
     })
   });
 
@@ -127,8 +128,10 @@ async function streamIntoElement(response, el) {
       if (data === '[DONE]') continue;
       try {
         const evt = JSON.parse(data);
-        if (evt.type === 'content_block_delta' && evt.delta?.type === 'text_delta') {
-          fullText += evt.delta.text;
+        // Groq/OpenAI streaming format
+        const delta = evt.choices?.[0]?.delta?.content;
+        if (delta) {
+          fullText += delta;
           el.textContent = fullText;
           el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
