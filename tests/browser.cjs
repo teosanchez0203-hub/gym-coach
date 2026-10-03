@@ -20,6 +20,7 @@ const path = require('node:path');
     await page.waitForSelector('.sess-card');
     await page.evaluate(()=>selectSession('push'));
     await page.locator('.as-add-btn').click();
+    await page.waitForFunction(()=>!!localStorage.getItem('gc_draft'));
     await page.reload();
     await page.waitForSelector('#screen-active:not(.hidden)');
     assert.equal(await page.evaluate(()=>state.sessionSets.press_inclinado.length),1);

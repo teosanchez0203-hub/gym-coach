@@ -320,7 +320,7 @@ async function loadLastWeights(exercises) {
     const last = await getLastExerciseData(ex.id);
     if (last && last.series && last.series.length > 0) {
       const lastSet = last.series[last.series.length - 1];
-      state.lastWeights[ex.id] = lastSet.kg;
+      state.lastWeights[ex.id] = ex.maxWeight ? Math.min(lastSet.kg, ex.maxWeight) : lastSet.kg;
       state.lastTexts[ex.id] = last.series.map(s => `${formatKg(s.kg)}×${s.reps}`).join(' · ');
     } else {
       state.lastWeights[ex.id] = ex.defaultWeight || 0;
@@ -513,7 +513,9 @@ async function addSet() {
   if (ex.maxSetsPerWeek && (await getReverseFlyWeeklySets()) + state.sessionSets[ex.id].length >= ex.maxSetsPerWeek) { showToast('Límite semanal alcanzado: no añadas más series.', 'warn'); return; }
 
   // Check for PR before saving
-  const pr = await checkForPR(ex.id, kg, reps);
+  // Recording a set must not wait for historical reads or let a quick reload lose it.
+  const historicalSets = state.sessionSets[ex.id].slice();
+  const prPromise = checkForPR(ex.id, kg, reps).catch(() => null);
 
   state.sessionSets[ex.id].push({ kg, reps, rpe: state.pendingRPE });
   state.lastWeights[ex.id] = kg;
@@ -525,7 +527,8 @@ async function addSet() {
   vibrate([50]);
 
   // Celebrate PR
-  if (pr) {
+  const pr = await prPromise;
+  if (pr && !historicalSets.some(s => oneRepMax(s.kg,s.reps) >= pr.orm)) {
     setTimeout(() => showPRCelebration(ex.name, kg, reps), 300);
   }
 }

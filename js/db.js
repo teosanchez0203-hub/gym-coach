@@ -83,7 +83,7 @@ async function getReverseFlyWeeklySets() {
   const sessions = await getAllSessions();
   const now = new Date();
   const weekStart = new Date(now);
-  weekStart.setDate(now.getDate() - now.getDay()); // start of week (Sunday)
+  weekStart.setDate(now.getDate() - (now.getDay() + 6) % 7); // DECISIÓN: calendar week starts Monday.
   weekStart.setHours(0, 0, 0, 0);
 
   let count = 0;

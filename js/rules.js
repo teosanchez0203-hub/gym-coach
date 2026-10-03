@@ -19,7 +19,7 @@ function evaluateSafetyRules(checkin) {
       level: "block",
       icon: "🍌",
       title: "En ayunas — Come algo antes",
-      detail: "Entreno intenso en ayunas = mareo garantizado. Come: plátano, yogur, tostada con miel, o toma una isotónica. (Esto ya te pasó antes.)"
+      detail: "Por tu antecedente de mareo, hoy no hagas una sesión intensa en ayunas. Come antes: plátano, yogur, tostada con miel o isotónica."
     });
   }
 
