@@ -26,8 +26,8 @@ async function getHistoricalPR(exerciseId) {
 async function checkForPR(exerciseId, kg, reps) {
   if (!kg || !reps || reps < 1) return null;
   const currentORM = oneRepMax(kg, reps);
-  const savedBest = await getHistoricalPR(exerciseId);
   const activeBest = typeof state !== 'undefined' ? Math.max(0, ...(state.sessionSets[exerciseId] || []).map(s => oneRepMax(s.kg,s.reps))) : 0;
+  const savedBest = await getHistoricalPR(exerciseId);
   const previousBest = Math.max(savedBest, activeBest);
   if (previousBest > 0 && currentORM > previousBest) {
     return { orm: currentORM, previous: previousBest, kg, reps };
