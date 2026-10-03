@@ -173,12 +173,15 @@ function renderChatGreeting() {
   const msgs = document.getElementById('chat-messages');
   const inSession = state.selectedSessionType && state.activeExercises?.length > 0;
   const ex = inSession ? state.activeExercises[state.currentExIdx] : null;
+  const hasKey = !!getApiKey();
 
-  let greeting = 'Hola Teo. ¿En qué puedo ayudarte?';
+  let greeting = hasKey
+    ? 'Hola Teo. ¿En qué puedo ayudarte?'
+    : 'Coach local: analizo tus entrenos guardados con reglas, sin internet. No soy una IA generativa ni diagnostico lesiones. Pregúntame por tu historial, progresión o series actuales.';
   let chips = [];
 
   if (inSession && ex) {
-    greeting = `Estás en ${SESSIONS[state.selectedSessionType]?.name}, en ${ex.name}. ¿Qué necesitas?`;
+    greeting = `Estás en ${SESSIONS[state.selectedSessionType]?.name}, ejercicio ${ex.name}. ¿Qué necesitas?`;
     chips = [
       '¿Bajo el peso o mantengo?',
       '¿Cuántas series más tiene sentido hacer?',
@@ -190,6 +193,7 @@ function renderChatGreeting() {
       '¿Cómo fue mi última sesión?',
       '¿Cuándo toca progresar en el press inclinado?',
       '¿Qué sesión me recomiendas hoy?',
+      '¿Cuáles son mis récords personales?',
       '¿Cómo va mi progreso general?'
     ];
   }
@@ -242,7 +246,7 @@ async function sendChatWithMessage(msg) {
   msgs.innerHTML += `
     <div class="chat-ai-msg" id="${aiId}">
       <div class="chat-avatar">C</div>
-      <div class="chat-bubble chat-bubble-ai chat-bubble-loading">...</div>
+      <div class="chat-bubble chat-bubble-ai chat-bubble-loading">pensando...</div>
     </div>`;
   msgs.scrollTop = msgs.scrollHeight;
   sendBtn.disabled = true;
@@ -251,16 +255,33 @@ async function sendChatWithMessage(msg) {
   bubbleEl.textContent = '';
 
   try {
-    const response = await sendChatMessage(msg);
-    if (!response) return;
-    await streamIntoElement(response, bubbleEl);
+    const apiKey = getApiKey();
+    if (!apiKey) {
+      // Use local coach — no API needed
+      const reply = await localCoachResponse(msg);
+      // Simulate typing for better feel
+      bubbleEl.classList.remove('chat-bubble-loading');
+      for (let i = 0; i <= reply.length; i++) {
+        bubbleEl.textContent = reply.slice(0, i);
+        if (i % 8 === 0) await new Promise(r => setTimeout(r, 6));
+      }
+      chatHistory.push({ role: 'user', content: msg });
+      chatHistory.push({ role: 'assistant', content: reply });
+    } else {
+      // Use Groq API
+      const response = await sendChatMessage(msg);
+      if (!response) return;
+      bubbleEl.classList.remove('chat-bubble-loading');
+      await streamIntoElement(response, bubbleEl);
+    }
   } catch (e) {
     bubbleEl.textContent = `Error: ${e.message}`;
     bubbleEl.style.color = 'var(--red)';
-    chatHistory.pop(); // remove failed user message
+    if (chatHistory.length && chatHistory[chatHistory.length-1].role === 'user') chatHistory.pop();
   } finally {
     sendBtn.disabled = false;
     document.getElementById('chat-input').focus();
+    msgs.scrollTop = msgs.scrollHeight;
   }
 }
 

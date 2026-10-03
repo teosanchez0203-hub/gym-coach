@@ -5,6 +5,17 @@ const STORE = "sessions";
 
 let db = null;
 
+async function importSessions(sessions) {
+  const d = await openDB();
+  return new Promise((resolve,reject) => {
+    const tx=d.transaction(STORE,'readwrite');
+    for(const session of sessions) tx.objectStore(STORE).put(session);
+    tx.oncomplete=resolve;
+    tx.onerror=()=>reject(tx.error);
+    tx.onabort=()=>reject(tx.error || new Error('Importación cancelada'));
+  });
+}
+
 function openDB() {
   return new Promise((resolve, reject) => {
     if (db) { resolve(db); return; }

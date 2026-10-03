@@ -192,6 +192,8 @@
 
   <div class="ss-body">
     <div id="ss-checkin-summary"></div>
+    <div id="ss-stats"></div>
+    <div id="stats-strip-container"></div>
     <div class="ss-section-title">Tu sesión de hoy</div>
     <div class="ss-section-sub" id="ss-subtitle">Elige lo que toca.</div>
     <div class="session-list" id="session-list"></div>
@@ -223,6 +225,19 @@
   </div>
 </div>
 
+<!-- ── F: NOTAS POST-SESIÓN ───────────────────────────────────────────────── -->
+<div id="screen-notes" class="screen hidden">
+  <div class="notes-header">
+    <div class="notes-title">¿Cómo fue?</div>
+    <div class="notes-sub">Nota opcional — algo que quieras recordar de esta sesión.</div>
+  </div>
+  <div class="notes-body">
+    <textarea id="notes-textarea" placeholder="Ej: hombro derecho un poco cargado en el press. Repetir 17,5kg la próxima..."></textarea>
+    <button class="notes-save-btn" onclick="saveWithNote()">Guardar nota →</button>
+    <div class="notes-skip" onclick="skipNote()">SALTAR</div>
+  </div>
+</div>
+
 <!-- ── E: HISTORIAL ──────────────────────────────────────────────────────── -->
 <div id="screen-history" class="screen hidden">
   <div class="hist-header">
@@ -233,13 +248,16 @@
     </div>
   </div>
   <div class="hist-body" id="history-content"></div>
+  <div class="notes-body"><button class="notes-save-btn" onclick="exportCSV()">Exportar entrenos a Excel (CSV)</button><button class="notes-save-btn" onclick="exportBackup()">Descargar copia de seguridad</button><label class="notes-sub">Restaurar copia JSON<input type="file" accept=".json,application/json" onchange="importBackup(this)"></label></div>
 </div>
 
-<script src="js/data.js?v=3"></script>
-<script src="js/db.js?v=3"></script>
-<script src="js/rules.js?v=3"></script>
-<script src="js/ai.js?v=3"></script>
-<script src="js/app.js?v=3"></script>
+<script src="js/data.js?v=4"></script>
+<script src="js/db.js?v=4"></script>
+<script src="js/backup.js?v=4"></script>
+<script src="js/rules.js?v=4"></script>
+<script src="js/coach.js?v=4"></script>
+<script src="js/ai.js?v=4"></script>
+<script src="js/app.js?v=4"></script>
 <script>
   // Apps Script code for settings screen
   document.getElementById('apps-script-code').textContent =
@@ -279,5 +297,16 @@
     });
   }
 </script>
+
+<!-- ── PR CELEBRATION OVERLAY ────────────────────────────────────────────── -->
+<div id="pr-celebration" class="hidden">
+  <div class="pr-inner">
+    <div class="pr-trophy">🏆</div>
+    <div class="pr-title">RÉCORD PERSONAL</div>
+    <div class="pr-ex" id="pr-ex-name"></div>
+    <div class="pr-val" id="pr-value"></div>
+  </div>
+</div>
+
 </body>
 </html>

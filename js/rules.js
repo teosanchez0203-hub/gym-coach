@@ -58,6 +58,9 @@ function evaluateSafetyRules(checkin) {
 
 // Filter/modify exercises based on check-in state
 function filterExercisesForCheckin(exercises, checkin) {
+  // DECISIÓN: the restricted rehab session cannot retain calves/core/heavy leg work.
+  if (checkin.rodilla === 'grave' || checkin.comida === 'ayunas') return exercises.filter(e => e.id === 'bicicleta');
+  if (checkin.rodilla === 'moderado' && exercises.some(e => e.id === 'bicicleta')) return exercises.filter(e => ['bicicleta', 'curl_femoral'].includes(e.id)).map(e => e.id === 'curl_femoral' ? {...e, defaultWeight:15, sets:2, tip:'Ligero y sin dolor. Detén el ejercicio si molesta.'} : e);
   return exercises.filter(ex => {
     // Prensa only if knee <= 3
     if (ex.kneeMax !== undefined) {
@@ -101,8 +104,8 @@ function checkProgression(exerciseId, history) {
         const series = h.series;
         return series.length >= 3 && series.every(s => s.kg >= 15 && s.reps >= 15);
       });
-      if (achieved.length >= 2) {
-        return "¡Toca subir! Completa 3×15 a 15 kg en 2 sesiones → pasa a 17,5 kg (objetivo: 8-10 reps).";
+      if (achieved.length >= 1 && history[0].series.filter(s => s.kg === 15 && s.reps >= 15).length >= 3) {
+        return "Toca progresar: 3×15 a 15 kg. Prueba 17,5 kg con objetivo 8-10 reps, manteniendo el control.";
       }
       // Also check if already at 17.5
       const at175 = recent.filter(h => h.series.some(s => s.kg >= 17.5 && s.reps >= 8));
@@ -138,7 +141,7 @@ function checkProgression(exerciseId, history) {
       const recent = history.slice(0, 3);
       const achieved = recent.filter(h => {
         if (h.series.length < 3) return false;
-        return h.series[0].reps >= 15 && h.series[1].reps >= 15 && h.series[2].reps >= 12;
+        return h.series.slice(0,3).every(s => s.kg === 40) && h.series[0].reps >= 15 && h.series[1].reps >= 15 && h.series[2].reps >= 12;
       });
       if (achieved.length >= 2) {
         return "¡Jalón consolidado! 40 kg × 15/15/12+ → prueba 45 kg solo si mantienes control total.";

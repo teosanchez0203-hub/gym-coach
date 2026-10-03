@@ -6,15 +6,17 @@ const state = {
   selectedSessionType: null,
   activeExercises: [],
   currentExIdx: 0,
-  sessionSets: {},      // exerciseId → [{kg, reps}]
+  sessionSets: {},      // exerciseId → [{kg, reps, rpe}]
   lastWeights: {},      // exerciseId → kg (number)
   lastTexts: {},        // exerciseId → "15×12 · 15×10"
   inputKg: 0,
   inputReps: 12,
+  pendingRPE: 'ok',     // 'easy' | 'ok' | 'hard'
   restTimerInterval: null,
   restRemaining: 0,
   restTotal: 0,
-  sessionStartTime: null
+  sessionStartTime: null,
+  sessionNote: ''
 };
 
 // ── Screen navigation ──────────────────────────────────────────────────────────
@@ -124,7 +126,7 @@ function buildWarningsScreen() {
   let hasBlock = false;
 
   state.safetyWarnings.forEach(w => {
-    if (w.level === 'block') hasBlock = true;
+    if (w.level === 'block' && state.checkin.energia === 'mareo') hasBlock = true;
     const d = document.createElement('div');
     d.className = `warn-card warn-card-${w.level}`;
     d.innerHTML = `
@@ -141,7 +143,7 @@ function buildWarningsScreen() {
     btn.textContent = 'Volver — no entrenes hoy';
     btn.onclick = () => initCheckin();
   } else {
-    btn.textContent = 'Entendido, seguir →';
+    btn.textContent = state.safetyWarnings.some(w => w.level === 'block') ? 'Ver únicamente opciones permitidas →' : 'Entendido, seguir →';
     btn.onclick = () => showSessionSelect();
   }
 }
@@ -197,6 +199,8 @@ async function showSessionSelect() {
 
   // Session cards (async: needs last-done dates for recommendation)
   await renderSessionCards();
+  const stats = await computeStats();
+  document.getElementById('ss-stats').innerHTML = `<div class="stats-strip"><div><strong>${stats.thisWeek}</strong><span>Últimos 7 días</span></div><div><strong>${stats.total}</strong><span>Sesiones guardadas</span></div><div><strong>${stats.thisMonth}</strong><span>Este mes</span></div></div>`;
 }
 
 async function renderSessionCards() {
@@ -262,6 +266,10 @@ async function renderSessionCards() {
 
 // ── D: Active session ──────────────────────────────────────────────────────────
 async function selectSession(type) {
+  if (state.checkin.energia === 'mareo' || (state.checkin.comida === 'ayunas' && type !== 'legs') || (state.checkin.rodilla === 'grave' && type !== 'legs')) {
+    showToast('Revisa los avisos: esta sesión está bloqueada.', 'warn');
+    return;
+  }
   state.selectedSessionType = type;
   const sessData = SESSIONS[type];
   let exercises = JSON.parse(JSON.stringify(sessData.exercises));
@@ -297,6 +305,7 @@ async function selectSession(type) {
   state.sessionSets = {};
   exercises.forEach(ex => { state.sessionSets[ex.id] = []; });
   state.sessionStartTime = Date.now();
+  state.savedSessionId = null;
 
   setInputsForExercise(exercises[0]);
   showScreen('screen-active');
@@ -434,8 +443,14 @@ function renderExerciseCard() {
           </div>
         </div>
       </div>
+      <div class="rpe-row">
+        <span class="rpe-label">¿CÓMO TE SIENTES?</span>
+        <button class="rpe-btn ${state.pendingRPE==='easy'?'rpe-selected':''}" data-rpe="easy" onclick="setRPE('easy')">😌 Fácil</button>
+        <button class="rpe-btn ${state.pendingRPE==='ok'?'rpe-selected':''}" data-rpe="ok" onclick="setRPE('ok')">💪 Bien</button>
+        <button class="rpe-btn ${state.pendingRPE==='hard'?'rpe-selected':''}" data-rpe="hard" onclick="setRPE('hard')">🔥 Duro</button>
+      </div>
       <button class="as-add-btn" onclick="addSet()">Apuntar serie ${sets.length + 1}</button>
-    </div>` : '';
+    </div>` : `<button class="as-add-btn" onclick="markUnweightedExercise()">Registrar completado</button>`;
 
   document.getElementById('as-body').innerHTML = `
     ${prioBadge}
@@ -458,6 +473,7 @@ function renderExerciseCard() {
     </div>
     ${logWidget}
     ${setsHtml}
+    ${sets.length ? '<button class="hist-back" onclick="undoLastSet()">Deshacer último registro</button>' : ''}
   `;
 }
 
@@ -484,7 +500,7 @@ function adjustReps(direction) {
 }
 
 // ── Add set ───────────────────────────────────────────────────────────────────
-function addSet() {
+async function addSet() {
   const kg = state.inputKg;
   const reps = state.inputReps;
   if (!kg || kg <= 0 || !reps || reps <= 0) {
@@ -493,12 +509,56 @@ function addSet() {
   }
 
   const ex = state.activeExercises[state.currentExIdx];
-  state.sessionSets[ex.id].push({ kg, reps });
+  if (ex.maxWeight && kg > ex.maxWeight) { showToast(`Máximo ${ex.maxWeight} kg en este ejercicio.`, 'warn'); return; }
+  if (ex.maxSetsPerWeek && (await getReverseFlyWeeklySets()) + state.sessionSets[ex.id].length >= ex.maxSetsPerWeek) { showToast('Límite semanal alcanzado: no añadas más series.', 'warn'); return; }
+
+  // Check for PR before saving
+  const pr = await checkForPR(ex.id, kg, reps);
+
+  state.sessionSets[ex.id].push({ kg, reps, rpe: state.pendingRPE });
   state.lastWeights[ex.id] = kg;
+  state.pendingRPE = 'ok'; // reset
+  persistDraft();
 
   renderExerciseCard();
   startRestTimer(ex.rest || 60);
   vibrate([50]);
+
+  // Celebrate PR
+  if (pr) {
+    setTimeout(() => showPRCelebration(ex.name, kg, reps), 300);
+  }
+}
+
+function setRPE(rpe) {
+  state.pendingRPE = rpe;
+  document.querySelectorAll('.rpe-btn').forEach(b => b.classList.remove('rpe-selected'));
+  document.querySelector(`.rpe-btn[data-rpe="${rpe}"]`)?.classList.add('rpe-selected');
+}
+
+function undoLastSet() {
+  const ex = state.activeExercises[state.currentExIdx];
+  if (!state.sessionSets[ex.id]?.length) return;
+  state.sessionSets[ex.id].pop();
+  skipTimer(); persistDraft(); renderExerciseCard();
+}
+
+function markUnweightedExercise() {
+  const ex = state.activeExercises[state.currentExIdx];
+  if (!ex.type) return;
+  state.sessionSets[ex.id].push({kg:0,reps:1,completed:true,durationMin:ex.durationMin || 0});
+  persistDraft(); renderExerciseCard();
+  showToast('Ejercicio completado', 'success');
+}
+
+function showPRCelebration(exName, kg, reps) {
+  const el = document.getElementById('pr-celebration');
+  if (!el) return;
+  document.getElementById('pr-ex-name').textContent = exName;
+  document.getElementById('pr-value').textContent = `${kg} kg × ${reps} reps`;
+  el.classList.remove('hidden');
+  vibrate([100, 50, 100, 50, 200]);
+  setTimeout(() => el.classList.add('hidden'), 3000);
 }
 
 // ── Navigation ────────────────────────────────────────────────────────────────
@@ -508,6 +568,7 @@ function prevExercise() {
     state.currentExIdx--;
     setInputsForExercise(state.activeExercises[state.currentExIdx]);
     renderExerciseCard();
+    persistDraft();
     window.scrollTo({ top: 0, behavior: 'instant' });
   }
 }
@@ -519,6 +580,7 @@ function nextExercise() {
     state.currentExIdx++;
     setInputsForExercise(state.activeExercises[state.currentExIdx]);
     renderExerciseCard();
+    persistDraft();
     window.scrollTo({ top: 0, behavior: 'instant' });
   }
 }
@@ -528,6 +590,7 @@ function confirmBack() {
     if (!confirm('¿Salir? Se perderán los datos de esta sesión.')) return;
   }
   skipTimer();
+  localStorage.removeItem('gc_draft');
   showSessionSelect();
 }
 
@@ -536,13 +599,14 @@ function startRestTimer(seconds) {
   clearInterval(state.restTimerInterval);
   state.restRemaining = seconds;
   state.restTotal = seconds;
+  state.restDeadline = Date.now() + seconds * 1000;
 
   const overlay = document.getElementById('rest-overlay');
   overlay.classList.remove('hidden');
   updateRestOverlay();
 
   state.restTimerInterval = setInterval(() => {
-    state.restRemaining--;
+    state.restRemaining = Math.max(0, Math.ceil((state.restDeadline - Date.now()) / 1000));
     updateRestOverlay();
     if (state.restRemaining <= 0) {
       clearInterval(state.restTimerInterval);
@@ -575,6 +639,7 @@ function updateRestOverlay() {
 
 function addRestTime(sec) {
   state.restRemaining += sec;
+  state.restDeadline = (state.restDeadline || Date.now()) + sec * 1000;
   state.restTotal += sec;
   if (!state.restTimerInterval && state.restRemaining > 0) {
     // Restart timer if it had finished
@@ -593,11 +658,35 @@ function skipTimer() {
   if (overlay) overlay.classList.add('hidden');
 }
 
+// ── Notes screen ──────────────────────────────────────────────────────────────
+function showNotesScreen() {
+  skipTimer();
+  document.getElementById('notes-textarea').value = '';
+  showScreen('screen-notes');
+  persistDraft();
+}
+
+async function saveWithNote() {
+  state.sessionNote = document.getElementById('notes-textarea').value.trim();
+  await doSaveSession();
+}
+
+async function skipNote() {
+  state.sessionNote = '';
+  await doSaveSession();
+}
+
 // ── Finish & save ─────────────────────────────────────────────────────────────
 async function finishSession() {
   if (!Object.values(state.sessionSets).some(arr => arr.length > 0)) {
     if (!confirm('No has apuntado ninguna serie. ¿Guardar de todas formas?')) return;
   }
+  showNotesScreen();
+}
+
+async function doSaveSession() {
+  if (state.saving || state.savedSessionId) return;
+  state.saving = true;
   skipTimer();
   const now = Date.now();
   const durMin = Math.round((now - state.sessionStartTime) / 60000);
@@ -607,6 +696,7 @@ async function finishSession() {
     nombre: ex.name,
     series: state.sessionSets[ex.id] || []
   })).filter(e => e.series.length > 0 || state.activeExercises.find(x => x.id === e.id)?.type);
+  const nota = state.sessionNote || '';
 
   const session = {
     id: now,
@@ -614,21 +704,27 @@ async function finishSession() {
     tipo: state.selectedSessionType,
     duracionMin: durMin,
     checkin: state.checkin,
-    ejercicios
+    ejercicios,
+    nota
   };
 
   try {
     await saveSession(session);
+    state.savedSessionId = session.id;
     showToast('Sesión guardada ✓', 'success');
   } catch (e) {
     showToast('Error al guardar', 'error');
     console.error(e);
+    state.saving = false;
+    return;
   }
+  state.saving = false;
+  localStorage.removeItem('gc_draft');
 
   // Export to Google Sheets if configured
   if (getSheetsUrl()) {
     exportSessionToSheets(session)
-      .then(ok => { if (ok) showToast('Exportado a Google Sheets ✓', 'success'); })
+      .then(ok => { if (ok) showToast('Enviado a Sheets; confirma la recepción en tu hoja.', 'info'); })
       .catch(() => {});
   }
 
@@ -669,12 +765,22 @@ async function buildHistoryScreen() {
         </div>
         ${ejerciciosConSeries.map(e => `
           <div class="hist-ex-row">
-            <span class="hist-ex-name">${e.nombre}</span>
+            <span class="hist-ex-name">${escapeHtml(e.nombre)}</span>
             <span class="hist-ex-sets">${e.series.map(s => `${formatKg(s.kg)}×${s.reps}`).join(' · ')}</span>
           </div>`).join('')}
         ${ejerciciosConSeries.length === 0 ? '<div style="padding:6px 0;font:500 12px \'Hanken Grotesk\';color:var(--label)">Solo ejercicios sin peso (bici, plancha...)</div>' : ''}
+        ${s.nota ? `<p class="hist-note">${escapeHtml(s.nota)}</p>` : ''}
       </div>`;
   });
+
+  html += '<div class="hist-section-label mt-24">POR EJERCICIO · ÚLTIMA SESIÓN</div>';
+  const uniqueExercises = [...new Map(Object.values(SESSIONS).flatMap(s => s.exercises).map(e => [e.id, e])).values()];
+  for (const ex of uniqueExercises) {
+    const history = await getExerciseHistory(ex.id);
+    const last = history[0];
+    const weights = history.slice(0, 10).reverse().map(h => Math.max(...h.series.map(s => s.kg)));
+    html += `<div class="exercise-history"><div><strong>${escapeHtml(ex.name)}</strong><p>${last ? new Date(last.fecha).toLocaleDateString('es-ES') + ' · ' + last.series.map(s => `${formatKg(s.kg)}×${s.reps}`).join(' / ') : 'Sin histórico todavía'}</p></div>${renderSparkline(weights)}</div>`;
+  }
 
   // Progression alerts
   const alerts = await buildProgressionAlerts();
@@ -741,4 +847,22 @@ function openChatInSession() {
 // ── Init ──────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   initCheckin();
+  restoreDraft();
 });
+
+// DECISIÓN: a local draft protects an unfinished session without adding a backend.
+function persistDraft() {
+  try { localStorage.setItem('gc_draft', JSON.stringify({checkin:state.checkin, selectedSessionType:state.selectedSessionType, activeExercises:state.activeExercises, currentExIdx:state.currentExIdx, sessionSets:state.sessionSets, lastWeights:state.lastWeights, lastTexts:state.lastTexts, sessionStartTime:state.sessionStartTime, sessionNote:state.sessionNote})); }
+  catch { showToast('No se pudo guardar el borrador; termina la sesión antes de cerrar.', 'warn'); }
+}
+function restoreDraft() {
+  try {
+    const draft = JSON.parse(localStorage.getItem('gc_draft') || 'null');
+    if (!draft?.activeExercises?.length || !draft.sessionSets) return;
+    Object.assign(state, draft);
+    setInputsForExercise(state.activeExercises[state.currentExIdx]);
+    renderExerciseCard();
+    showScreen('screen-active');
+    showToast('Sesión pendiente recuperada', 'success');
+  } catch { showToast('No se pudo recuperar el borrador.', 'warn'); }
+}
